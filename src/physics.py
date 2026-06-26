@@ -2,9 +2,10 @@ import torch
 
 #Se calcula el residuo de la ecuación diferencial de Budyko-Sellers
 
-#Q_solar = Radiación solar incidente media (constante)
-
 def calculate_physics_loss(model, x, Q_solar=340.0):
+    #Q_solar: Radiación solar incidente media constante
+
+    
     #Se obtiene la predicción de temperatura
     T = model(x)
     
@@ -12,7 +13,7 @@ def calculate_physics_loss(model, x, Q_solar=340.0):
     dT_dx = torch.autograd.grad(
         T, x, 
         grad_outputs=torch.ones_like(T),
-        create_graph=True, #Se crea el grafo para poder derivar nuevamente
+        create_graph=True, #Para derivar nuevamente
         retain_graph=True
     )[0]
     
@@ -24,16 +25,16 @@ def calculate_physics_loss(model, x, Q_solar=340.0):
     )[0]
     
     #Ecuación de balance de energía
-    
-    #Radiación Solar Entrante -albedo constante-
-    albedo = 0.3
+    #Radiación Solar Entrante -Albedo Dinámico-
+    #Tanh para que sea C infinito
+    albedo = 0.5 - 0.2 * torch.tanh(0.1 * (T - 263.15))
 
     #Aproximación: Q(x) = Q_solar * (1 - 0.482 * x^2)
     Q_in = Q_solar * (1.0 - 0.482 * (x**2)) * (1.0 - albedo)
     
     #Radiación Infrarroja Saliente (R_out = A + B*T), usando parámetros descubiertos
     R_out = model.A_out + model.B_out * T
-    
+
     #Transporte de Calor (Difusión)
     #D * [ -2x * dT/dx + (1-x^2) * d2T/dx2 ]
     transporte_calor = model.D * ( -2.0 * x * dT_dx + (1.0 - x**2) * d2T_dx2 )
