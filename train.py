@@ -5,7 +5,7 @@ from src.model import ClimateInversePINN
 from src.physics import calculate_physics_loss
 from src.data_processing import get_training_data, get_collocation_points
 
-def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
+def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     print("Iniciando entrenamiento de la Inverse PINN...")
     
     #Se cargan los datos y puntos físicos
@@ -24,20 +24,19 @@ def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
     #Se inicializa el modelo
     model = ClimateInversePINN(hidden_layers=4, neurons_per_layer=32)
     
-    #Se inicializa el optimizador ADAM para los pesos de la red y los parámetros físicos
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    #Fase 1: ADAM
+    #Búsqueda rápida
+    optimizer_adam = optim.Adam(model.parameters(), lr=1e-3)
     
-    #Historial para plotear después
     history = {'loss_total': [], 'loss_data': [], 'loss_physics': [], 
                'D': [], 'A': [], 'B': []}
     
-    #Entrenamiento
-    for epoch in range(epochs):
-        optimizer.zero_grad()
+    print("\n--- FASE 1: Entrenando con Adam ---")
+    for epoch in range(epochs_adam):
+        optimizer_adam.zero_grad()
         
         #Curriculum learning
-        #lambda_val arranca en 0 y sube linealmente hasta lambda_physics_max
-        lambda_val = lambda_physics_max * (epoch / epochs)
+        lambda_val = lambda_physics_max * (epoch / epochs_adam)
         
         #Loss Data
         T_pred = model(x_data)
@@ -53,7 +52,7 @@ def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
         
         #Backpropagation
         loss_total.backward()
-        optimizer.step()
+        optimizer_adam.step()
         
         #Se guardan valores cada 100 epochs
         if epoch % 100 == 0:
@@ -69,8 +68,42 @@ def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
             history['B'].append(B_val)
             
             if epoch % 500 == 0:
-                print(f"Epoch {epoch:04d} | L_Total: {loss_total.item():.2f} | L_Data: {loss_data.item():.2f} | L_Phys: {loss_physics.item():.2f}")
-                print(f"           | Params Descubiertos -> D: {D_val:.4f}, A: {A_val:.2f}, B: {B_val:.4f} | Lambda: {lambda_val:.2f}")
+                print(f"Adam Epoch {epoch:04d} | L_Total: {loss_total.item():.2f} | L_Data: {loss_data.item():.2f} | L_Phys: {loss_physics.item():.2f}")
+
+    #Fase 2: L-BFGS
+    #Lidia con los mínimos donde Adam se queda estancado.
+    print("\n--- FASE 2: Entrenando con L-BFGS (Ajuste Fino) ---")
+    
+    optimizer_lbfgs = optim.LBFGS(
+        model.parameters(), 
+        lr=0.1, 
+        max_iter=2000, 
+        max_eval=2000, 
+        tolerance_grad=1e-7, 
+        tolerance_change=1e-9, 
+        history_size=100
+    )
+    
+    #L-BFGS requiere una función 'closure' que re-evalúe todo el grafo
+    def closure():
+        optimizer_lbfgs.zero_grad()
+        
+        T_pred = model(x_data)
+        loss_data = torch.mean((T_pred - T_data)**2)
+        
+        loss_physics_colloc = calculate_physics_loss(model, x_physics)
+        loss_physics_data = calculate_physics_loss(model, x_data)
+        loss_physics = loss_physics_colloc + loss_physics_data
+        
+        #En la fase L-BFGS, se usa el lambda máximo completo
+        loss_total = loss_data + lambda_physics_max * loss_physics
+        loss_total.backward()
+        return loss_total
+
+    optimizer_lbfgs.step(closure)
+    
+    final_loss = closure()
+    print(f"L-BFGS Final Loss: {final_loss.item():.4f}")
 
     print("\n¡Entrenamiento finalizado!")
     print(f"Parámetros finales descubiertos: D={model.D.item():.4f}, A={model.A_out.item():.2f}, B={model.B_out.item():.4f}")
@@ -88,7 +121,7 @@ def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
     
     plt.xlabel(r'Variable espacial $x = \sin(latitud)$')
     plt.ylabel('Temperatura (°C)')
-    plt.title('Validación del Equilibrio Climático Topológico')
+    plt.title('Validación del Equilibrio Climático Topológico (Adam + L-BFGS)')
     plt.legend()
     plt.grid(True, linestyle=':', alpha=0.7)
     plt.tight_layout()
@@ -98,4 +131,4 @@ def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
 
 if __name__ == "__main__":
     #Se corre el entrenamiento
-    trained_model, training_history = train_inverse_pinn(epochs=10000, lambda_physics_max=1.0)
+    trained_model, training_history = train_inverse_pinn(epochs_adam=3000, lambda_physics_max=1.0)
