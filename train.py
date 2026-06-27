@@ -1,9 +1,9 @@
 import torch
 import torch.optim as optim
 import matplotlib.pyplot as plt
-from model import ClimateInversePINN
-from physics import calculate_physics_loss
-from data_processing import get_training_data, get_collocation_points
+from src.model import ClimateInversePINN
+from src.physics import calculate_physics_loss
+from src.data_processing import get_training_data, get_collocation_points
 
 def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
     print("Iniciando entrenamiento de la Inverse PINN...")
@@ -86,7 +86,7 @@ def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
     plt.plot(x_data.detach().numpy(), T_data.detach().numpy() - 273.15, 'ro', label='Datos Reales NOAA (CSV)')
     plt.plot(x_plot.detach().numpy(), T_plot.detach().numpy() - 273.15, 'b-', linewidth=2.5, label='Curva Continua Inverse PINN')
     
-    plt.xlabel('Variable espacial $x = \sin(latitud)$')
+    plt.xlabel(r'Variable espacial $x = \sin(latitud)$')
     plt.ylabel('Temperatura (°C)')
     plt.title('Validación del Equilibrio Climático Topológico')
     plt.legend()
@@ -98,4 +98,4 @@ def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
 
 if __name__ == "__main__":
     #Se corre el entrenamiento
-    trained_model, training_history = train_inverse_pinn(epochs=5000, lambda_physics_max=1.0) # CAMBIO: lambda_physics -> lambda_physics_max
+    trained_model, training_history = train_inverse_pinn(epochs=5000, lambda_physics_max=1.0)
