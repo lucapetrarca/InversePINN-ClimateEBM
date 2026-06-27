@@ -71,20 +71,18 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
                 print(f"Adam Epoch {epoch:04d} | L_Total: {loss_total.item():.2f} | L_Data: {loss_data.item():.2f} | L_Phys: {loss_physics.item():.2f}")
 
     #Fase 2: L-BFGS
-    #Lidia con los mínimos donde Adam se queda estancado.
-    print("\n--- FASE 2: Entrenando con L-BFGS (Ajuste Fino) ---")
-    
+    print("\n--- FASE 2: Entrenando con L-BFGS (Ajuste Fino Profundo) ---")
     optimizer_lbfgs = optim.LBFGS(
         model.parameters(), 
-        lr=0.1, 
-        max_iter=2000, 
-        max_eval=2000, 
+        lr=1.0,  #strong_wolfe maneja el lr automáticamente, 1.0 es ideal
+        max_iter=50000, 
+        max_eval=50000, 
         tolerance_grad=1e-7, 
         tolerance_change=1e-9, 
-        history_size=100
+        history_size=200, #Memoria para la matriz Hessiana
+        line_search_fn="strong_wolfe"
     )
     
-    #L-BFGS requiere una función 'closure' que re-evalúe todo el grafo
     def closure():
         optimizer_lbfgs.zero_grad()
         
@@ -95,7 +93,6 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
         loss_physics_data = calculate_physics_loss(model, x_data)
         loss_physics = loss_physics_colloc + loss_physics_data
         
-        #En la fase L-BFGS, se usa el lambda máximo completo
         loss_total = loss_data + lambda_physics_max * loss_physics
         loss_total.backward()
         return loss_total
@@ -121,7 +118,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     
     plt.xlabel(r'Variable espacial $x = \sin(latitud)$')
     plt.ylabel('Temperatura (°C)')
-    plt.title('Validación del Equilibrio Climático Topológico (Adam + L-BFGS)')
+    plt.title('Validación del Equilibrio Climático Topológico (Adam + L-BFGS Bestia)')
     plt.legend()
     plt.grid(True, linestyle=':', alpha=0.7)
     plt.tight_layout()
@@ -130,5 +127,5 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     return model, history
 
 if __name__ == "__main__":
-    #Se corre el entrenamiento
+    #Entrenamiento
     trained_model, training_history = train_inverse_pinn(epochs_adam=3000, lambda_physics_max=1.0)
