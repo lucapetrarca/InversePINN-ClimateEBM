@@ -5,7 +5,7 @@ from src.model import ClimateInversePINN
 from src.physics import calculate_physics_loss
 from src.data_processing import get_training_data, get_collocation_points
 
-def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
+def train_inverse_pinn(epochs=10000, lambda_physics_max=1.0):
     print("Iniciando entrenamiento de la Inverse PINN...")
     
     #Se cargan los datos y puntos físicos
@@ -98,4 +98,4 @@ def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
 
 if __name__ == "__main__":
     #Se corre el entrenamiento
-    trained_model, training_history = train_inverse_pinn(epochs=15000, lambda_physics_max=1.0)
+    trained_model, training_history = train_inverse_pinn(epochs=10000, lambda_physics_max=1.0)

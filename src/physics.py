@@ -5,8 +5,7 @@ import torch
 def calculate_physics_loss(model, x, Q_solar=340.0):
     #Q_solar: Radiación solar incidente media constante
 
-    
-    #Se obtiene la predicción de temperatura
+    #Se obtiene la predicción de temperatura (Ya viene en Kelvin)
     T = model(x)
     
     #Se calculan la primera y segunda derivada de T respecto a x
@@ -26,14 +25,17 @@ def calculate_physics_loss(model, x, Q_solar=340.0):
     
     #Ecuación de balance de energía
     #Radiación Solar Entrante -Albedo Dinámico-
-    #Tanh para que sea C infinito
+    #Tanh para que sea C infinito (T-263.15 K equivale a -10 °C)
     albedo = 0.5 - 0.2 * torch.tanh(0.1 * (T - 263.15))
 
     #Aproximación: Q(x) = Q_solar * (1 - 0.482 * x^2)
     Q_in = Q_solar * (1.0 - 0.482 * (x**2)) * (1.0 - albedo)
     
-    #Radiación Infrarroja Saliente (R_out = A + B*T), usando parámetros descubiertos
-    R_out = model.A_out + model.B_out * T
+    #La fórmula empírica de Budyko se calibra en grados Celsius, no en Kelvin.
+    T_celsius = T - 273.15
+    
+    #Radiación Infrarroja Saliente (R_out = A + B*T_celsius), usando parámetros descubiertos
+    R_out = model.A_out + model.B_out * T_celsius
 
     #Transporte de Calor (Difusión)
     #D * [ -2x * dT/dx + (1-x^2) * d2T/dx2 ]

@@ -27,5 +27,7 @@ class ClimateInversePINN(nn.Module):
         self.B_out = nn.Parameter(torch.tensor([1.5], dtype=torch.float32))
         
     def forward(self, x):
-        #Se calcula la temperatura a partir de un valor de x
-        return self.net(x)
+        out_norm = self.net(x)
+        T_kelvin = out_norm * 50.0 + 273.15 #Se fuerza el arranque de la temperatura en el rango de temperaturas biológicas de la tierra
+        
+        return T_kelvin
