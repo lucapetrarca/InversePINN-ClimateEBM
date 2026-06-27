@@ -10,7 +10,7 @@ def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
     
     #Se cargan los datos y puntos físicos
     try:
-        x_data, T_data = get_training_data('../data/temp_latitudinal.csv')
+        x_data, T_data = get_training_data('data/temp_latitudinal.csv')
         print(f"Datos reales cargados: {x_data.shape[0]} latitudes.")
     except Exception as e:
         print("Error cargando el CSV. Asegurate de haber corrido data_loader.ipynb primero.")
@@ -98,4 +98,4 @@ def train_inverse_pinn(epochs=5000, lambda_physics_max=1.0):
 
 if __name__ == "__main__":
     #Se corre el entrenamiento
-    trained_model, training_history = train_inverse_pinn(epochs=5000, lambda_physics_max=1.0)
+    trained_model, training_history = train_inverse_pinn(epochs=15000, lambda_physics_max=1.0)
