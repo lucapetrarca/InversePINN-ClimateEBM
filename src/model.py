@@ -18,16 +18,14 @@ class ClimateInversePINN(nn.Module):
         self.net = nn.Sequential(*layers)
         
         #Parámetros Físicos a descubrir
-        
-        #Coeficiente "D" de difusión de calor
         self.D = nn.Parameter(torch.tensor([0.5], dtype=torch.float32))
-        
-        #Constantes de radiación saliente (R_out = A + B*T)
         self.A_out = nn.Parameter(torch.tensor([200.0], dtype=torch.float32))
-        self.B_out = nn.Parameter(torch.tensor([1.5], dtype=torch.float32))
+        self.B_out = nn.Parameter(torch.tensor([1.5], dtype=torch.float32))   
+        #Agregamos el factor de Asimetría Hemisférica (Continentes vs Océanos)
+        self.C_out = nn.Parameter(torch.tensor([0.0], dtype=torch.float32))
         
     def forward(self, x):
+        #Escalado / Un-normalization
         out_norm = self.net(x)
-        T_kelvin = out_norm * 50.0 + 273.15 #Se fuerza el arranque de la temperatura en el rango de temperaturas biológicas de la tierra
-        
+        T_kelvin = out_norm * 50.0 + 273.15
         return T_kelvin
