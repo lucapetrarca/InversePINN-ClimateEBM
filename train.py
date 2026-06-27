@@ -6,7 +6,7 @@ from src.physics import calculate_physics_loss
 from src.data_processing import get_training_data, get_collocation_points
 
 def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
-    print("Iniciando entrenamiento de la Inverse PINN...")
+    print("Iniciando entrenamiento de la PINN")
     
     #Se cargan los datos y puntos físicos
     try:
@@ -31,7 +31,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     history = {'loss_total': [], 'loss_data': [], 'loss_physics': [], 
                'D': [], 'A': [], 'B': []}
     
-    print("\n--- FASE 1: Entrenando con Adam ---")
+    print("\nFASE 1: Adam")
     for epoch in range(epochs_adam):
         optimizer_adam.zero_grad()
         
@@ -59,6 +59,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
             D_val = model.D.item()
             A_val = model.A_out.item()
             B_val = model.B_out.item()
+            C_val = model.C_out.item()
             
             history['loss_total'].append(loss_total.item())
             history['D'].append(D_val)
@@ -72,6 +73,9 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
 
     #Fase 2: L-BFGS
     print("\n--- FASE 2: Entrenando con L-BFGS (Ajuste Fino Profundo) ---")
+    
+    #Se agregan memoria e iteraciones 
+    #strong_wolfe evita que aborte tempranamente
     optimizer_lbfgs = optim.LBFGS(
         model.parameters(), 
         lr=1.0,  #strong_wolfe maneja el lr automáticamente, 1.0 es ideal
@@ -79,7 +83,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
         max_eval=50000, 
         tolerance_grad=1e-7, 
         tolerance_change=1e-9, 
-        history_size=200, #Memoria para la matriz Hessiana
+        history_size=200, #Más memoria para la matriz Hessiana
         line_search_fn="strong_wolfe"
     )
     
@@ -102,11 +106,11 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     final_loss = closure()
     print(f"L-BFGS Final Loss: {final_loss.item():.4f}")
 
-    print("\n¡Entrenamiento finalizado!")
-    print(f"Parámetros finales descubiertos: D={model.D.item():.4f}, A={model.A_out.item():.2f}, B={model.B_out.item():.4f}")
+    print("\nEntrenamiento finalizado")
+    print(f"Parámetros: D={model.D.item():.4f}, A={model.A_out.item():.2f}, B={model.B_out.item():.4f}, C (Asimetría)={model.C_out.item():.4f}")
     
     #Validación visual
-    print("\nGenerando gráfico de validación...")
+    print("\nGenerando gráfico de validación")
     model.eval()
     with torch.no_grad():
         x_plot = torch.linspace(-1, 1, 200).view(-1, 1)
@@ -118,7 +122,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     
     plt.xlabel(r'Variable espacial $x = \sin(latitud)$')
     plt.ylabel('Temperatura (°C)')
-    plt.title('Validación del Equilibrio Climático Topológico (Adam + L-BFGS Bestia)')
+    plt.title('Validación del Equilibrio Climático Topológico (Adam + L-BFGS)')
     plt.legend()
     plt.grid(True, linestyle=':', alpha=0.7)
     plt.tight_layout()
@@ -127,5 +131,4 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     return model, history
 
 if __name__ == "__main__":
-    #Entrenamiento
     trained_model, training_history = train_inverse_pinn(epochs_adam=3000, lambda_physics_max=1.0)
