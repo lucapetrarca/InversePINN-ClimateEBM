@@ -7,7 +7,7 @@ from src.physics import calculate_physics_loss
 from src.data_processing import get_training_data, get_collocation_points, get_rar_collocation_points
 
 def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
-    print("Iniciando entrenamiento de la PINN")
+    print("Iniciando entrenamiento de la PINN con Field Discovery D(x)")
     
     try:
         x_data, T_data = get_training_data('data/temp_latitudinal.csv')
@@ -17,15 +17,13 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
         return None, None
         
     x_physics = get_collocation_points(n_points=100)
-    
     x_data.requires_grad_(True)
     
     model = ClimateInversePINN(hidden_layers=5, neurons_per_layer=64)
-    
     optimizer_adam = optim.Adam(model.parameters(), lr=1e-3)
     
     history = {'loss_total': [], 'loss_data': [], 'loss_physics': [], 
-               'D': [], 'A': [], 'B': [], 'C': []}
+               'D_mean': [], 'A': [], 'B': [], 'C': []}
     
     print("\nFASE 1: Adam con RAR")
     for epoch in range(epochs_adam):
@@ -33,7 +31,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
         
         lambda_val = lambda_physics_max * (epoch / epochs_adam)
         
-        T_pred = model(x_data)
+        T_pred, _ = model(x_data)
         loss_data = torch.mean((T_pred - T_data)**2)
         
         loss_physics_colloc = calculate_physics_loss(model, x_physics)
@@ -41,7 +39,6 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
         loss_physics = loss_physics_colloc + loss_physics_data
         
         loss_total = loss_data + lambda_val * loss_physics
-        
         loss_total.backward()
         optimizer_adam.step()
         
@@ -50,13 +47,16 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
             print(f"   [RAR] Agregados 20 nuevos puntos. Total puntos físicos: {x_physics.shape[0]}")
         
         if epoch % 100 == 0:
-            D_val = F.softplus(model.D).item()
+            #Se calcula un D promedio solo para el historial
+            _, D_pred_data = model(x_data)
+            D_mean_val = torch.mean(D_pred_data).item()
+            
             A_val = model.A_out.item()
             B_val = model.B_out.item()
             C_val = model.C_out.item()
             
             history['loss_total'].append(loss_total.item())
-            history['D'].append(D_val)
+            history['D_mean'].append(D_mean_val)
             history['loss_data'].append(loss_data.item())
             history['loss_physics'].append(loss_physics.item())
             history['A'].append(A_val)
@@ -82,7 +82,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
     def closure():
         optimizer_lbfgs.zero_grad()
         
-        T_pred = model(x_data)
+        T_pred, _ = model(x_data)
         loss_data = torch.mean((T_pred - T_data)**2)
         
         loss_physics_colloc = calculate_physics_loss(model, x_physics)
@@ -96,10 +96,9 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
     optimizer_lbfgs.step(closure)
     
     print("\nEntrenamiento finalizado")
-    
     model.eval()
     
-    T_pred_final = model(x_data)
+    T_pred_final, _ = model(x_data)
     final_L_data = torch.mean((T_pred_final - T_data)**2).item()
     final_L_phys_colloc = calculate_physics_loss(model, x_physics).item()
     final_L_phys_data = calculate_physics_loss(model, x_data).item()
@@ -107,29 +106,37 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
     print("\n--- VALIDACIÓN CIENTÍFICA ---")
     print(f"1. Error Estadístico (L_Data MSE):        {final_L_data:.4f} °C^2")
     print(f"2. Error Físico en Sensores (L_Phys):     {final_L_phys_data:.4f}")
-    print(f"3. Error de Generalización (L_Colloc):    {final_L_phys_colloc:.4f} <-- ESTA ES LA VALIDACIÓN")
-    print(f"   (Física cumplida en {x_physics.shape[0]} zonas no observadas)")
+    print(f"3. Error de Generalización (L_Colloc):    {final_L_phys_colloc:.4f}")
     
-    final_D = F.softplus(model.D).item()
-    print(f"\nParámetros Descubiertos (Físicamente Válidos):")
-    print(f"D={final_D:.4f}, A={model.A_out.item():.2f}, B={model.B_out.item():.4f}, C={model.C_out.item():.4f}")
+    print(f"\nParámetros Constantes Descubiertos:")
+    print(f"A={model.A_out.item():.2f}, B={model.B_out.item():.4f}, C={model.C_out.item():.4f}")
     
-    print("\nGenerando gráfico de validación...")
+    print("\nGenerando gráficos de validación...")
     with torch.no_grad():
         x_plot = torch.linspace(-1, 1, 200).view(-1, 1)
-        T_plot = model(x_plot)
+        T_plot, D_plot = model(x_plot)
         
-    plt.figure(figsize=(9, 6))
-    plt.plot(x_data.detach().numpy(), T_data.detach().numpy() - 273.15, 'ro', label='Datos Reales NOAA (CSV)')
-    plt.plot(x_plot.detach().numpy(), T_plot.detach().numpy() - 273.15, 'b-', linewidth=2.5, label='Curva Continua Inverse PINN')
+    #Ploteos
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
-    plt.plot(x_physics.detach().numpy(), [-48]*x_physics.shape[0], 'g|', markersize=8, label='Collocation Points (RAR)')
+    #Plot 1: Temperatura
+    ax1.plot(x_data.detach().numpy(), T_data.detach().numpy() - 273.15, 'ro', label='Datos Reales NOAA')
+    ax1.plot(x_plot.detach().numpy(), T_plot.detach().numpy() - 273.15, 'b-', linewidth=2.5, label='Predicción T(x)')
+    ax1.plot(x_physics.detach().numpy(), [-48]*x_physics.shape[0], 'g|', markersize=8, label='Collocation Points (RAR)')
+    ax1.set_xlabel(r'Variable espacial $x = \sin(latitud)$')
+    ax1.set_ylabel('Temperatura (°C)')
+    ax1.set_title('Perfil de Temperaturas')
+    ax1.legend()
+    ax1.grid(True, linestyle=':', alpha=0.7)
+    
+    #Plot 2: Campo de Difusividad Descubierto
+    ax2.plot(x_plot.detach().numpy(), D_plot.detach().numpy(), 'm-', linewidth=2.5, label='D(x) Descubierto')
+    ax2.set_xlabel(r'Variable espacial $x = \sin(latitud)$')
+    ax2.set_ylabel('Difusividad (D)')
+    ax2.set_title('Campo de Difusividad Térmica Oculto')
+    ax2.legend()
+    ax2.grid(True, linestyle=':', alpha=0.7)
 
-    plt.xlabel(r'Variable espacial $x = \sin(latitud)$')
-    plt.ylabel('Temperatura (°C)')
-    plt.title('Validación del EBM Topológico (Física Restringida)')
-    plt.legend()
-    plt.grid(True, linestyle=':', alpha=0.7)
     plt.tight_layout()
     plt.show()
     
