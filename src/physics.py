@@ -1,4 +1,7 @@
 import torch
+import torch.nn.functional as F
+
+#Se calcula el residuo de la ecuación diferencial de Budyko-Sellers
 
 def calculate_physics_loss(model, x, Q_solar=340.0):
     #Se obtiene la predicción de temperatura (Ya viene en Kelvin)
@@ -25,11 +28,14 @@ def calculate_physics_loss(model, x, Q_solar=340.0):
     
     T_celsius = T - 273.15
     
-    #C*x compensa la diferencia térmica entre el Polo Norte (x=1) y el Polo Sur (x=-1)
+    #Ecuación Asimétrica. C*x compensa la diferencia térmica Hemisferio Norte vs Sur.
     R_out = model.A_out + model.B_out * T_celsius + model.C_out * x
 
     #Transporte de Calor (Difusión)
-    transporte_calor = model.D * ( -2.0 * x * dT_dx + (1.0 - x**2) * d2T_dx2 )
+    #Se fuerza D no negativo
+    D_efectivo = F.softplus(model.D)
+    
+    transporte_calor = D_efectivo * ( -2.0 * x * dT_dx + (1.0 - x**2) * d2T_dx2 )
     
     #Residuo
     f_residuo = transporte_calor + Q_in - R_out
