@@ -7,7 +7,7 @@ from src.physics import calculate_physics_loss
 from src.data_processing import get_training_data, get_collocation_points, get_rar_collocation_points
 
 def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
-    print("Iniciando entrenamiento de la PINN con Field Discovery D(x)")
+    print("Iniciando entrenamiento de la PINN con Field Discovery D(x) y Física Restringida")
     
     try:
         x_data, T_data = get_training_data('data/temp_latitudinal.csv')
@@ -47,12 +47,11 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
             print(f"   [RAR] Agregados 20 nuevos puntos. Total puntos físicos: {x_physics.shape[0]}")
         
         if epoch % 100 == 0:
-            #Se calcula un D promedio solo para el historial
             _, D_pred_data = model(x_data)
             D_mean_val = torch.mean(D_pred_data).item()
             
             A_val = model.A_out.item()
-            B_val = model.B_out.item()
+            B_val = F.softplus(model.B_out).item()
             C_val = model.C_out.item()
             
             history['loss_total'].append(loss_total.item())
@@ -66,7 +65,7 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
             if epoch % 500 == 0:
                 print(f"Adam Epoch {epoch:04d} | L_Total: {loss_total.item():.2f} | L_Data: {loss_data.item():.2f} | L_Phys: {loss_physics.item():.2f}")
 
-    print("\n--- FASE 2: Entrenando con L-BFGS (Ajuste Fino Profundo) ---")
+    print("\n--- FASE 2: Entrenando con L-BFGS ---")
     
     optimizer_lbfgs = optim.LBFGS(
         model.parameters(), 
@@ -108,18 +107,17 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
     print(f"2. Error Físico en Sensores (L_Phys):     {final_L_phys_data:.4f}")
     print(f"3. Error de Generalización (L_Colloc):    {final_L_phys_colloc:.4f}")
     
-    print(f"\nParámetros Constantes Descubiertos:")
-    print(f"A={model.A_out.item():.2f}, B={model.B_out.item():.4f}, C={model.C_out.item():.4f}")
+    final_B = F.softplus(model.B_out).item()
+    print(f"\nParámetros Constantes Descubiertos (100% Válidos):")
+    print(f"A={model.A_out.item():.2f}, B={final_B:.4f}, C={model.C_out.item():.4f}")
     
     print("\nGenerando gráficos de validación...")
     with torch.no_grad():
         x_plot = torch.linspace(-1, 1, 200).view(-1, 1)
         T_plot, D_plot = model(x_plot)
         
-    #Ploteos
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
-    #Plot 1: Temperatura
     ax1.plot(x_data.detach().numpy(), T_data.detach().numpy() - 273.15, 'ro', label='Datos Reales NOAA')
     ax1.plot(x_plot.detach().numpy(), T_plot.detach().numpy() - 273.15, 'b-', linewidth=2.5, label='Predicción T(x)')
     ax1.plot(x_physics.detach().numpy(), [-48]*x_physics.shape[0], 'g|', markersize=8, label='Collocation Points (RAR)')
@@ -129,7 +127,6 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.5):
     ax1.legend()
     ax1.grid(True, linestyle=':', alpha=0.7)
     
-    #Plot 2: Campo de Difusividad Descubierto
     ax2.plot(x_plot.detach().numpy(), D_plot.detach().numpy(), 'm-', linewidth=2.5, label='D(x) Descubierto')
     ax2.set_xlabel(r'Variable espacial $x = \sin(latitud)$')
     ax2.set_ylabel('Difusividad (D)')
