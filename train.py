@@ -5,7 +5,7 @@ from src.model import ClimateInversePINN
 from src.physics import calculate_physics_loss
 from src.data_processing import get_training_data, get_collocation_points
 
-def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
+def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=0.7):
     print("Iniciando entrenamiento de la PINN")
     
     #Se cargan los datos y puntos físicos
@@ -16,13 +16,13 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
         print("Error cargando el CSV. Asegurate de haber corrido data_loader.ipynb primero.")
         return None, None
         
-    x_physics = get_collocation_points(n_points=200)
+    x_physics = get_collocation_points(n_points=100)
     
     #Los datos también minimizan loss física
     x_data.requires_grad_(True)
     
     #Se inicializa el modelo
-    model = ClimateInversePINN(hidden_layers=4, neurons_per_layer=32)
+    model = ClimateInversePINN(hidden_layers=5, neurons_per_layer=64)
     
     #Fase 1: ADAM
     #Búsqueda rápida
@@ -131,4 +131,4 @@ def train_inverse_pinn(epochs_adam=5000, lambda_physics_max=1.0):
     return model, history
 
 if __name__ == "__main__":
-    trained_model, training_history = train_inverse_pinn(epochs_adam=3000, lambda_physics_max=1.0)
+    trained_model, training_history = train_inverse_pinn(epochs_adam=10000, lambda_physics_max=0.1)
