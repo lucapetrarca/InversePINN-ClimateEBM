@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 #Se calcula el residuo de la ecuación diferencial de Budyko-Sellers
 
@@ -22,7 +23,6 @@ def calculate_physics_loss(model, x, Q_solar=340.0):
     )[0]
     
     #Derivada del campo D(x)
-    #Como D ahora varía con x, se necesita su derivada espacial por la regla del producto.
     dD_dx = torch.autograd.grad(
         D_efectivo, x,
         grad_outputs=torch.ones_like(D_efectivo),
@@ -35,12 +35,14 @@ def calculate_physics_loss(model, x, Q_solar=340.0):
     Q_in = Q_solar * (1.0 - 0.482 * (x**2)) * (1.0 - albedo)
     
     T_celsius = T - 273.15
-    R_out = model.A_out + model.B_out * T_celsius + model.C_out * x
-
-    # Transporte de Calor (Difusión) con regla del producto completa:
-    # d/dx [ D(x) * (1-x^2) * dT/dx ] 
-    # = D'(x)*(1-x^2)*T'(x) - D(x)*2x*T'(x) + D(x)*(1-x^2)*T''(x)
     
+    #B > 0
+    B_efectivo = F.softplus(model.B_out)
+    
+    #Ecuación Asimétrica.
+    R_out = model.A_out + B_efectivo * T_celsius + model.C_out * x
+
+    #Transporte de Calor (Difusión) con regla del producto completa:
     transporte_calor = (
         dD_dx * (1.0 - x**2) * dT_dx + 
         D_efectivo * (-2.0 * x) * dT_dx + 
